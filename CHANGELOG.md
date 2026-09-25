@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.0.5 - 2026-09-25
+- Theme the loot browser like the modern WoW spellbook
+
 ## v1.0.4 - 2026-09-25
 - Add a changelog that updates with each version
 

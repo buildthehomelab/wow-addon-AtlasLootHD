@@ -6,12 +6,11 @@ AtlasLoot Enhanced v5.11.04 for WoW 3.3.5 (Wrath of the Lich King), with the loo
 
 The standalone browser (`/al`) now has:
 
-- Select Module and Select Subcategory dropdowns
-- The loot table under the boss name, with item icons bordered in their quality color
+- A modern theme built from stock 3.3.5 art: a dark metal frame, and the loot table on a parchment page like a spellbook, with item colors darkened to stay readable. The Loot Browser Style option switches the page back to dark (Classic Style).
+- Select Module and Select Subcategory dropdowns, and a search box beside them
+- The loot table under the boss name, with item icons framed in their quality color and a page counter for tables split over several pages
 - Items missing from the client's cache are queried from the server automatically, once, when their page is shown (no Query Server button needed)
-- A difficulty list (Normal/Heroic, 10/25 Man) that stays selected as you move between bosses
-- A scrolling boss list
-- A quick access list for the wishlist, the last search and QuickLooks 1-4 (right-click a QuickLook to save the current loot table)
+- A right-hand column with Difficulty (Normal/Heroic, 10/25 Man, which stays selected as you move between bosses), a scrolling Bosses list, and Quick Access to the wishlist, the last search and QuickLooks 1-4 (right-click a QuickLook to save the current loot table)
 
 The loot view inside Atlas is unchanged.
 

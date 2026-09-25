@@ -28,6 +28,10 @@ if AL then
 	AL["Normal"] = true;
 	AL["Left-click: Show this loot table"] = true;
 	AL["Right-click: Assign the current loot table"] = true;
+	AL["Difficulty"] = true;
+	AL["Bosses"] = true;
+	AL["Quick Access"] = true;
+	AL["Page %d/%d"] = true;
 	AL["Drop Rate: "] = true;
 	AL["DKP"] = true;
 	AL["Priority:"] = true;

@@ -30,27 +30,33 @@ local FRAME_WIDTH, FRAME_HEIGHT = 900, 602;
 local PAD = 10;
 local LOOT_WIDTH, LOOT_HEIGHT, LOOT_TOP = 600, 516, -76;
 local SIDE_WIDTH = FRAME_WIDTH - LOOT_WIDTH - 3 * PAD;
-local HEADER_HEIGHT = 26;
-local ITEM_TOP, ITEM_HEIGHT = -30, 30;
+local HEADER_HEIGHT = 36;
+local ITEM_TOP, ITEM_HEIGHT = -46, 29;
 local ITEM_WIDTH = (LOOT_WIDTH - 12) / 2;
 local ICON_SIZE = 26;
 local LINE_HEIGHT = 18;
-local DIFFICULTY_LINES, BOSS_LINES, EXTRA_LINES = 4, 18, 6;
+local SECTION_HEADER_HEIGHT = 20;
+local DIFFICULTY_LINES, BOSS_LINES, EXTRA_LINES = 4, 15, 6;
 
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8";
 local GOLD_DOT = "Interface\\AddOns\\AtlasLoot\\Images\\gold";
 local SILVER_DOT = "Interface\\AddOns\\AtlasLoot\\Images\\silver";
+--Stock 3.3.5 art: the achievement row parchment and the quest greeting divider
+local PARCHMENT_TEXTURE = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal";
+local DIVIDER_TEXTURE = "Interface\\QuestFrame\\UI-HorizontalBreak";
+
+--Theme colors: a dark metal frame around a parchment loot page
+local INK = { 0.22, 0.14, 0.06 };
+local INK_LIGHT = { 0.38, 0.29, 0.18 };
+local BRONZE = { 0.55, 0.44, 0.26 };
+local EDGE = { 0.3, 0.25, 0.17 };
 
 --Where loot tables are anchored in the browser.  Kept in the global pFrame too,
 --because the search and wishlist code read it from there.
 local LOOT_ANCHOR = { "TOPLEFT", "AtlasLootDefaultFrame_LootBackground", "TOPLEFT", "2", "-2" };
 
-local PANEL_BACKDROP = {
-    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-};
+--Flat panels with a 1px border
+local PANEL_BACKDROP = { bgFile = WHITE_TEXTURE, edgeFile = WHITE_TEXTURE, edgeSize = 1 };
 
 --HeroicMode, Bigraid and BigraidHeroic profile flags for each difficulty
 local DIFFICULTY_FLAGS = {
@@ -67,8 +73,11 @@ local modules;
 
 local lootBackground, moduleBox, subBox;
 local difficultyLines, bossLines, extraLines = {}, {}, {};
-local bossScrollBar, searchBox, searchPlaceholder;
+local bossScrollBar, searchBox, searchPlaceholder, pageCounter;
 local itemsLayoutModern, backButtonWidth;
+--The "New Style" loot page is parchment, "Classic Style" keeps it dark
+local parchment = true;
+local pageTextures = { parchment = {}, dark = {} };
 
 --[[
 Widget helpers
@@ -82,16 +91,44 @@ end
 
 local function SkinPanel(frame, alpha)
     frame:SetBackdrop(PANEL_BACKDROP);
-    frame:SetBackdropColor(0, 0, 0, alpha);
-    frame:SetBackdropBorderColor(0.6, 0.6, 0.6, 1);
+    frame:SetBackdropColor(0.04, 0.04, 0.04, alpha);
+    frame:SetBackdropBorderColor(EDGE[1], EDGE[2], EDGE[3], 1);
 end
 
-local function CreatePanel(parent, height)
-    local panel = CreateFrame("Frame", nil, parent);
-    panel:SetWidth(SIDE_WIDTH);
-    panel:SetHeight(height);
-    SkinPanel(panel, 0.6);
-    return panel;
+--A 1px line around the inside of a frame, used to build the beveled metal edge
+local function AddBorder(frame, inset, r, g, b, a)
+    local top = SolidTexture(frame, "BORDER", r, g, b, a);
+    top:SetPoint("TOPLEFT", inset, -inset);
+    top:SetPoint("TOPRIGHT", -inset, -inset);
+    top:SetHeight(1);
+    local bottom = SolidTexture(frame, "BORDER", r, g, b, a);
+    bottom:SetPoint("BOTTOMLEFT", inset, inset);
+    bottom:SetPoint("BOTTOMRIGHT", -inset, inset);
+    bottom:SetHeight(1);
+    local left = SolidTexture(frame, "BORDER", r, g, b, a);
+    left:SetPoint("TOPLEFT", inset, -inset);
+    left:SetPoint("BOTTOMLEFT", inset, inset);
+    left:SetWidth(1);
+    local right = SolidTexture(frame, "BORDER", r, g, b, a);
+    right:SetPoint("TOPRIGHT", -inset, -inset);
+    right:SetPoint("BOTTOMRIGHT", -inset, inset);
+    right:SetWidth(1);
+end
+
+--A section of the right-hand column: a dark header bar with a gold title, then its lines
+local function CreateSection(parent, title, height)
+    local section = CreateFrame("Frame", nil, parent);
+    section:SetWidth(SIDE_WIDTH - 8);
+    section:SetHeight(height);
+    local header = SolidTexture(section, "ARTWORK", 1, 1, 1, 1);
+    header:SetPoint("TOPLEFT");
+    header:SetPoint("TOPRIGHT");
+    header:SetHeight(SECTION_HEADER_HEIGHT);
+    header:SetGradientAlpha("HORIZONTAL", 0.24, 0.2, 0.13, 1, 0.1, 0.09, 0.07, 1);
+    local label = section:CreateFontString(nil, "OVERLAY", "GameFontNormal");
+    label:SetPoint("LEFT", header, "LEFT", 8, 0);
+    label:SetText(title);
+    return section;
 end
 
 local function StripText(text)
@@ -132,19 +169,19 @@ end
 --A row in one of the lists on the right
 local function CreateLine(parent, index, onClick)
     local line = CreateFrame("Button", nil, parent);
-    line:SetWidth(SIDE_WIDTH - 10);
+    line:SetWidth(SIDE_WIDTH - 16);
     line:SetHeight(LINE_HEIGHT);
-    line:SetPoint("TOPLEFT", parent, "TOPLEFT", 5, -5 - (index - 1) * LINE_HEIGHT);
+    line:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -SECTION_HEADER_HEIGHT - 2 - (index - 1) * LINE_HEIGHT);
     line:RegisterForClicks("LeftButtonUp", "RightButtonUp");
 
     line.selected = SolidTexture(line, "BACKGROUND", 1, 1, 1, 1);
     line.selected:SetAllPoints();
-    line.selected:SetGradientAlpha("HORIZONTAL", 0.9, 0.7, 0.1, 0.9, 0.5, 0.35, 0.05, 0.5);
+    line.selected:SetGradientAlpha("HORIZONTAL", 0.8, 0.62, 0.12, 0.8, 0.8, 0.62, 0.12, 0);
     line.selected:Hide();
 
     local highlight = SolidTexture(line, "HIGHLIGHT", 1, 1, 1, 1);
     highlight:SetAllPoints();
-    highlight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.3, 1, 0.82, 0, 0);
+    highlight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.2, 1, 0.82, 0, 0);
 
     line.dot = line:CreateTexture(nil, "OVERLAY");
     line.dot:SetWidth(14);
@@ -191,7 +228,7 @@ local function CreateDropdown(parent, label, width)
     local box = CreateFrame("Button", nil, parent);
     box:SetWidth(width);
     box:SetHeight(24);
-    SkinPanel(box, 0.8);
+    SkinPanel(box, 0.9);
 
     box.label = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall");
     box.label:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 2, 1);
@@ -213,8 +250,8 @@ local function CreateDropdown(parent, label, width)
     box.text:SetJustifyH("RIGHT");
 
     local highlight = SolidTexture(box, "HIGHLIGHT", 1, 1, 1, 0.06);
-    highlight:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -4);
-    highlight:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -4, 4);
+    highlight:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1);
+    highlight:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -1, 1);
 
     box:SetScript("OnClick", function() ToggleDropdown(box) end);
     box.arrowButton:SetScript("OnClick", function() ToggleDropdown(box) end);
@@ -486,7 +523,7 @@ local function UpdateBossList()
     else
         bossScrollBar:Hide();
     end
-    local width = SIDE_WIDTH - (maxOffset > 0 and 24 or 10);
+    local width = SIDE_WIDTH - (maxOffset > 0 and 28 or 16);
     for i, line in ipairs(bossLines) do
         local index = offset + i;
         local entry = state.bosses[index];
@@ -593,6 +630,7 @@ the loot browser and put back the way the XML defines it when it leaves.
 local function StyleItemButton(name, modern)
     local button = getglobal(name);
     local icon, unsafe = getglobal(name.."_Icon"), getglobal(name.."_Unsafe");
+    local nameText, extraText = getglobal(name.."_Name"), getglobal(name.."_Extra");
     local highlight = button:GetHighlightTexture();
     icon:ClearAllPoints();
     unsafe:ClearAllPoints();
@@ -601,17 +639,30 @@ local function StyleItemButton(name, modern)
         button:SetHeight(ITEM_HEIGHT);
         icon:SetWidth(ICON_SIZE);
         icon:SetHeight(ICON_SIZE);
-        icon:SetPoint("LEFT", button, "LEFT", 2, 0);
+        icon:SetPoint("LEFT", button, "LEFT", 3, 0);
         unsafe:SetWidth(ICON_SIZE + 2);
         unsafe:SetHeight(ICON_SIZE + 2);
         unsafe:SetPoint("CENTER", icon, "CENTER");
-        --Uncached items are queried automatically, so this is only "loading" now
-        unsafe:SetTexture(0.4, 0.4, 0.4, 1);
-        getglobal(name.."_Name"):SetWidth(ITEM_WIDTH - ICON_SIZE - 10);
-        getglobal(name.."_Extra"):SetWidth(ITEM_WIDTH - ICON_SIZE - 10);
+        nameText:SetWidth(ITEM_WIDTH - ICON_SIZE - 12);
+        extraText:SetWidth(ITEM_WIDTH - ICON_SIZE - 12);
         highlight:SetTexture(WHITE_TEXTURE);
         highlight:SetBlendMode("BLEND");
-        highlight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.3, 1, 0.82, 0, 0);
+        --Uncached items are queried automatically, so the unsafe marker only means "loading" now
+        if parchment then
+            unsafe:SetTexture(INK_LIGHT[1], INK_LIGHT[2], INK_LIGHT[3], 1);
+            nameText:SetTextColor(INK[1], INK[2], INK[3]);
+            extraText:SetTextColor(INK_LIGHT[1], INK_LIGHT[2], INK_LIGHT[3]);
+            nameText:SetShadowColor(0, 0, 0, 0);
+            extraText:SetShadowColor(0, 0, 0, 0);
+            highlight:SetGradientAlpha("HORIZONTAL", 0.45, 0.28, 0.08, 0.3, 0.45, 0.28, 0.08, 0);
+        else
+            unsafe:SetTexture(0.4, 0.4, 0.4, 1);
+            nameText:SetTextColor(1, 0.82, 0);
+            extraText:SetTextColor(1, 0.82, 0);
+            nameText:SetShadowColor(0, 0, 0, 1);
+            extraText:SetShadowColor(0, 0, 0, 1);
+            highlight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.3, 1, 0.82, 0, 0);
+        end
         if not button.qualityBorder then
             button.qualityBorder = button:CreateTexture(nil, "BACKGROUND");
             button.qualityBorder:SetTexture(WHITE_TEXTURE);
@@ -630,8 +681,12 @@ local function StyleItemButton(name, modern)
         unsafe:SetHeight(27);
         unsafe:SetPoint("TOPLEFT", button, "TOPLEFT");
         unsafe:SetTexture(1, 0, 0, 1);
-        getglobal(name.."_Name"):SetWidth(205);
-        getglobal(name.."_Extra"):SetWidth(205);
+        nameText:SetWidth(205);
+        extraText:SetWidth(205);
+        nameText:SetTextColor(1, 0.82, 0);
+        extraText:SetTextColor(1, 0.82, 0);
+        nameText:SetShadowColor(0, 0, 0, 1);
+        extraText:SetShadowColor(0, 0, 0, 1);
         highlight:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight");
         highlight:SetBlendMode("ADD");
         highlight:SetVertexColor(1, 1, 1, 1);
@@ -656,16 +711,38 @@ local function SetItemsFrameLayout(modern)
         AtlasLootItemsFrame_BACK:SetWidth(80);
         AtlasLootItem_1:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, ITEM_TOP);
         AtlasLootMenuItem_1:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, ITEM_TOP);
-        AtlasLoot_BossName:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, 0);
-        AtlasLoot_BossName:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, 0);
-        AtlasLoot_BossName:SetHeight(HEADER_HEIGHT);
-        AtlasLootItemsFrame_PREV:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 4, 1);
-        AtlasLootItemsFrame_NEXT:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 1);
-        AtlasLootItemsFrame_BACK:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 40, 6);
-        AtlasLootFilterCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 330, 4);
+        AtlasLoot_BossName:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -4);
+        AtlasLoot_BossName:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -4);
+        AtlasLoot_BossName:SetHeight(HEADER_HEIGHT - 4);
+        --Page arrows sit together at the bottom right, next to the page counter
+        AtlasLootItemsFrame_NEXT:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 2);
+        AtlasLootItemsFrame_PREV:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 2);
+        AtlasLootItemsFrame_BACK:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 8, 7);
+        AtlasLootFilterCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 96, 5);
         --Pages query their uncached items on their own in the browser
         AtlasLootServerQueryButton:Hide();
+        if parchment then
+            AtlasLoot_BossName:SetFontObject(GameFontNormalHuge);
+            AtlasLoot_BossName:SetJustifyH("LEFT");
+            AtlasLoot_BossName:SetTextColor(INK[1], INK[2], INK[3]);
+            AtlasLoot_BossName:SetShadowColor(0, 0, 0, 0);
+            AtlasLootFilterCheckText:SetTextColor(INK[1], INK[2], INK[3]);
+            AtlasLootFilterCheckText:SetShadowColor(0, 0, 0, 0);
+        else
+            AtlasLoot_BossName:SetFontObject(GameFontHighlightLarge);
+            AtlasLoot_BossName:SetJustifyH("CENTER");
+            AtlasLoot_BossName:SetTextColor(1, 1, 1);
+            AtlasLoot_BossName:SetShadowColor(0, 0, 0, 1);
+            AtlasLootFilterCheckText:SetTextColor(1, 0.82, 0);
+            AtlasLootFilterCheckText:SetShadowColor(0, 0, 0, 1);
+        end
     else
+        AtlasLoot_BossName:SetFontObject(GameFontHighlightLarge);
+        AtlasLoot_BossName:SetJustifyH("CENTER");
+        AtlasLoot_BossName:SetTextColor(1, 1, 1);
+        AtlasLoot_BossName:SetShadowColor(0, 0, 0, 1);
+        AtlasLootFilterCheckText:SetTextColor(1, 0.82, 0);
+        AtlasLootFilterCheckText:SetShadowColor(0, 0, 0, 1);
         frame:SetWidth(510);
         frame:SetHeight(510);
         AtlasLootItem_1:SetPoint("TOPLEFT", frame, "TOPLEFT", 25, -35);
@@ -700,7 +777,6 @@ local function UpdateItemsFrameLayout()
         AtlasLootItemsFrame:ClearAllPoints();
         AtlasLootItemsFrame:SetAllPoints(lootBackground);
         AtlasLootItemsFrame_Back:SetTexture(0, 0, 0, 0);
-        searchBox:SetFrameLevel(AtlasLootItemsFrame:GetFrameLevel() + 3);
     elseif itemsLayoutModern then
         SetItemsFrameLayout(false);
     end
@@ -721,22 +797,105 @@ end
 local function UpdateQualityBorders()
     for i = 1, 30 do
         local button = getglobal("AtlasLootItem_"..i);
+        local loading = getglobal("AtlasLootItem_"..i.."_Unsafe"):IsShown();
         local quality;
-        if button:IsShown() and not getglobal("AtlasLootItem_"..i.."_Unsafe"):IsShown() then
+        if button:IsShown() and not loading then
             local itemID = ButtonItemID(button);
             if itemID then
                 quality = select(3, GetItemInfo(itemID));
             end
         end
-        --The border only exists once the modern layout has been applied
+        --The border only exists once the modern layout has been applied.
+        --On parchment every icon gets a frame, bronze until its quality is known.
         local border = button.qualityBorder;
         if border and quality then
             local r, g, b = GetItemQualityColor(quality);
             border:SetVertexColor(r, g, b, 1);
             border:Show();
+        elseif border and parchment and button:IsShown() and not loading then
+            border:SetVertexColor(EDGE[1], EDGE[2], EDGE[3], 1);
+            border:Show();
         elseif border then
             border:Hide();
         end
+    end
+end
+
+--[[
+Parchment text
+Item names and descriptions carry color codes meant for a dark background.
+Light ones are darkened so they stay readable on parchment: white and grey
+become ink, other colors keep their hue. Colors that are already dark are left
+alone, so darkening the same text twice changes nothing.
+]]
+local function ParchmentColor(alpha, hex)
+    local r = tonumber(strsub(hex, 1, 2), 16) / 255;
+    local g = tonumber(strsub(hex, 3, 4), 16) / 255;
+    local b = tonumber(strsub(hex, 5, 6), 16) / 255;
+    local luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    if luminance <= 0.4 then
+        return "|c"..alpha..hex;
+    end
+    if math.max(r, g, b) - math.min(r, g, b) < 0.15 then
+        --White and grey: the lighter the color, the darker the ink
+        local fade = (1 - luminance) * 0.6;
+        r, g, b = INK[1] + fade, INK[2] + fade, INK[3] + fade;
+    else
+        local scale = 0.32 / luminance;
+        r, g, b = r * scale, g * scale, b * scale;
+    end
+    return format("|c%s%02x%02x%02x", alpha, floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5));
+end
+
+local function DarkenText(fontString)
+    local text = fontString:GetText();
+    if text then
+        fontString:SetText((gsub(text, "|c(%x%x)(%x%x%x%x%x%x)", ParchmentColor)));
+    end
+end
+
+local function DarkenPageText()
+    for i = 1, 30 do
+        for _, prefix in ipairs({ "AtlasLootItem_", "AtlasLootMenuItem_" }) do
+            if getglobal(prefix..i):IsShown() then
+                DarkenText(getglobal(prefix..i.."_Name"));
+                DarkenText(getglobal(prefix..i.."_Extra"));
+            end
+        end
+    end
+end
+
+--"Page 2/3" for loot tables split over pages that share a title. Next and Prev
+--also link separate bosses, which have different titles and are not counted.
+local function UpdatePageCounter(page)
+    local names = page and AtlasLoot_TableNames[page];
+    local data = page and AtlasLoot_Data[page];
+    if not (names and data) or IsMenu(page) then
+        pageCounter:Hide();
+        return;
+    end
+    local title = names[1];
+    local function SamePage(id)
+        return id and AtlasLoot_Data[id] and AtlasLoot_TableNames[id] and AtlasLoot_TableNames[id][1] == title;
+    end
+    local index, total, seen = 1, 1, { [page] = true };
+    local id = data.Prev;
+    while SamePage(id) and not seen[id] do
+        seen[id] = true;
+        index, total = index + 1, total + 1;
+        id = AtlasLoot_Data[id].Prev;
+    end
+    id = data.Next;
+    while SamePage(id) and not seen[id] do
+        seen[id] = true;
+        total = total + 1;
+        id = AtlasLoot_Data[id].Next;
+    end
+    if total > 1 then
+        pageCounter:SetText(format(AL["Page %d/%d"], index, total));
+        pageCounter:Show();
+    else
+        pageCounter:Hide();
     end
 end
 
@@ -844,6 +1003,10 @@ function AtlasLootDefaultFrame_Refresh(dataID)
             end
         end
     end
+    if parchment then
+        DarkenPageText();
+    end
+    UpdatePageCounter(state.page);
     UpdateQualityBorders();
     QueryPage();
     AtlasLootDefaultFrame_UpdateSidePanels();
@@ -863,17 +1026,21 @@ local function UpdateSearchPlaceholder()
     end
 end
 
-local function CreateSearch()
-    searchBox = CreateFrame("EditBox", "AtlasLootDefaultFrameSearchBox", lootBackground, "InputBoxTemplate");
-    searchBox:SetWidth(160);
-    searchBox:SetHeight(20);
-    searchBox:SetPoint("BOTTOMLEFT", lootBackground, "BOTTOMLEFT", 130, 7);
+local function CreateSearch(frame, width)
+    --A flat box like the dropdowns, rather than the stock silver InputBoxTemplate
+    searchBox = CreateFrame("EditBox", "AtlasLootDefaultFrameSearchBox", frame);
+    searchBox:SetWidth(width);
+    searchBox:SetHeight(24);
+    searchBox:SetPoint("LEFT", subBox, "RIGHT", 8, 0);
+    SkinPanel(searchBox, 0.9);
+    searchBox:SetFontObject(GameFontHighlightSmall);
+    searchBox:EnableMouse(true);
     searchBox:SetAutoFocus(false);
     searchBox:SetMaxLetters(100);
-    searchBox:SetTextInsets(0, 8, 0, 0);
+    searchBox:SetTextInsets(8, 8, 0, 0);
 
-    searchPlaceholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisable");
-    searchPlaceholder:SetPoint("LEFT", searchBox, "LEFT", 2, 0);
+    searchPlaceholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall");
+    searchPlaceholder:SetPoint("LEFT", searchBox, "LEFT", 8, 0);
     searchPlaceholder:SetText(AL["Search"]);
 
     searchBox:SetScript("OnEnterPressed", function(self)
@@ -897,12 +1064,13 @@ local function CreateSearch()
     end);
     searchBox:SetScript("OnTextChanged", UpdateSearchPlaceholder);
 
+    --Search options use the same yellow arrow as the dropdowns
     local options = CreateFrame("Button", "AtlasLootDefaultFrameSearchOptionsButton", searchBox);
-    options:SetWidth(24);
-    options:SetHeight(24);
+    options:SetWidth(22);
+    options:SetHeight(22);
     options:SetPoint("LEFT", searchBox, "RIGHT", 2, 0);
-    options:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up");
-    options:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down");
+    options:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up");
+    options:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Down");
     options:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD");
     options:SetScript("OnClick", function(self) AtlasLoot:ShowSearchOptions(self) end);
     options:SetScript("OnEnter", function(self) ShowTooltip(self, AL["Search on"]) end);
@@ -910,14 +1078,21 @@ local function CreateSearch()
 end
 
 local function CreateSidePanels(frame)
-    local difficultyPanel = CreatePanel(frame, DIFFICULTY_LINES * LINE_HEIGHT + 10);
-    difficultyPanel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32);
+    --One dark column holding three titled sections, like a settings category list
+    local column = CreateFrame("Frame", nil, frame);
+    column:SetWidth(SIDE_WIDTH);
+    column:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -32);
+    column:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, PAD);
+    SkinPanel(column, 0.75);
+
+    local difficultyPanel = CreateSection(column, AL["Difficulty"], SECTION_HEADER_HEIGHT + DIFFICULTY_LINES * LINE_HEIGHT + 6);
+    difficultyPanel:SetPoint("TOPLEFT", column, "TOPLEFT", 4, -4);
     for i = 1, DIFFICULTY_LINES do
         difficultyLines[i] = CreateLine(difficultyPanel, i, OnDifficultyClick);
     end
 
-    local extraPanel = CreatePanel(frame, EXTRA_LINES * LINE_HEIGHT + 10);
-    extraPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, PAD);
+    local extraPanel = CreateSection(column, AL["Quick Access"], SECTION_HEADER_HEIGHT + EXTRA_LINES * LINE_HEIGHT + 6);
+    extraPanel:SetPoint("BOTTOMLEFT", column, "BOTTOMLEFT", 4, 4);
     for i = 1, EXTRA_LINES do
         local line = CreateLine(extraPanel, i, OnExtraClick);
         --QuickLook lines carry their QuickLook number as ID
@@ -929,10 +1104,9 @@ local function CreateSidePanels(frame)
         extraLines[i] = line;
     end
 
-    local bossPanel = CreateFrame("Frame", nil, frame);
+    local bossPanel = CreateSection(column, AL["Bosses"], 0);
     bossPanel:SetPoint("TOPLEFT", difficultyPanel, "BOTTOMLEFT", 0, -6);
     bossPanel:SetPoint("BOTTOMRIGHT", extraPanel, "TOPRIGHT", 0, 6);
-    SkinPanel(bossPanel, 0.6);
 
     for i = 1, BOSS_LINES do
         bossLines[i] = CreateLine(bossPanel, i, OnBossClick);
@@ -941,8 +1115,8 @@ local function CreateSidePanels(frame)
     --A plain slider rather than FauxScrollFrameTemplate, whose scripts differ between clients
     bossScrollBar = CreateFrame("Slider", "AtlasLootDefaultFrameBossScrollBar", bossPanel);
     bossScrollBar:SetWidth(6);
-    bossScrollBar:SetPoint("TOPRIGHT", bossPanel, "TOPRIGHT", -8, -8);
-    bossScrollBar:SetPoint("BOTTOMRIGHT", bossPanel, "BOTTOMRIGHT", -8, 8);
+    bossScrollBar:SetPoint("TOPRIGHT", bossPanel, "TOPRIGHT", -4, -SECTION_HEADER_HEIGHT - 4);
+    bossScrollBar:SetPoint("BOTTOMRIGHT", bossPanel, "BOTTOMRIGHT", -4, 4);
     bossScrollBar:SetOrientation("VERTICAL");
     bossScrollBar:SetValueStep(1);
     bossScrollBar:SetMinMaxValues(0, 0);
@@ -975,44 +1149,84 @@ local function CreateLootPanel(frame)
     lootBackground:SetWidth(LOOT_WIDTH);
     lootBackground:SetHeight(LOOT_HEIGHT);
     lootBackground:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, LOOT_TOP);
-    lootBackground:SetBackdrop({ bgFile = WHITE_TEXTURE });
-    lootBackground:SetBackdropColor(0, 0, 0, 0.5);
+    lootBackground:SetBackdrop({ edgeFile = WHITE_TEXTURE, edgeSize = 1 });
+    lootBackground:SetBackdropBorderColor(0.08, 0.06, 0.04, 1);
 
-    --Boss name header: a faint band over a gold rule that fades out towards both edges.
-    --The name itself is AtlasLoot_BossName in the items frame.
+    --New Style: a parchment page, darker towards its edges, with an ornate
+    --divider under the boss name (AtlasLoot_BossName in the items frame)
+    local page = pageTextures.parchment;
+    local paper = lootBackground:CreateTexture(nil, "BACKGROUND");
+    paper:SetTexture(PARCHMENT_TEXTURE);
+    paper:SetPoint("TOPLEFT", 1, -1);
+    paper:SetPoint("BOTTOMRIGHT", -1, 1);
+    tinsert(page, paper);
+    --Each edge: two anchors, then the gradient's alpha from bottom to top or left to right
+    local edges = {
+        { "TOPLEFT", 1, -1, "TOPRIGHT", -1, -1, "VERTICAL", 0, 0.35 },
+        { "BOTTOMLEFT", 1, 1, "BOTTOMRIGHT", -1, 1, "VERTICAL", 0.35, 0 },
+        { "TOPLEFT", 1, -1, "BOTTOMLEFT", 1, 1, "HORIZONTAL", 0.35, 0 },
+        { "TOPRIGHT", -1, -1, "BOTTOMRIGHT", -1, 1, "HORIZONTAL", 0, 0.35 },
+    };
+    for _, edge in ipairs(edges) do
+        local shade = SolidTexture(lootBackground, "BORDER", 1, 1, 1, 1);
+        shade:SetPoint(edge[1], edge[2], edge[3]);
+        shade:SetPoint(edge[4], edge[5], edge[6]);
+        if edge[7] == "VERTICAL" then
+            shade:SetHeight(40);
+        else
+            shade:SetWidth(40);
+        end
+        shade:SetGradientAlpha(edge[7], 0.25, 0.14, 0.04, edge[8], 0.25, 0.14, 0.04, edge[9]);
+        tinsert(page, shade);
+    end
+    local divider = lootBackground:CreateTexture(nil, "ARTWORK");
+    divider:SetTexture(DIVIDER_TEXTURE);
+    divider:SetPoint("TOPLEFT", 6, -28);
+    divider:SetPoint("TOPRIGHT", -6, -28);
+    divider:SetHeight(20);
+    tinsert(page, divider);
+
+    --Classic Style: a dark page with a faint header band and gold rule
+    local dark = pageTextures.dark;
+    local shadow = SolidTexture(lootBackground, "BACKGROUND", 0, 0, 0, 0.5);
+    shadow:SetPoint("TOPLEFT", 1, -1);
+    shadow:SetPoint("BOTTOMRIGHT", -1, 1);
+    tinsert(dark, shadow);
     local header = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 0.04);
-    header:SetPoint("TOPLEFT");
-    header:SetPoint("TOPRIGHT");
+    header:SetPoint("TOPLEFT", 1, -1);
+    header:SetPoint("TOPRIGHT", -1, -1);
     header:SetHeight(HEADER_HEIGHT);
+    tinsert(dark, header);
     local ruleLeft = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
     ruleLeft:SetPoint("TOPLEFT", header, "BOTTOMLEFT");
     ruleLeft:SetPoint("TOPRIGHT", header, "BOTTOM");
     ruleLeft:SetHeight(1);
     ruleLeft:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0, 1, 0.82, 0, 0.8);
+    tinsert(dark, ruleLeft);
     local ruleRight = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
     ruleRight:SetPoint("TOPLEFT", header, "BOTTOM");
     ruleRight:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT");
     ruleRight:SetHeight(1);
     ruleRight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.8, 1, 0.82, 0, 0);
+    tinsert(dark, ruleRight);
 
-    local bar = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 0.05);
-    bar:SetPoint("BOTTOMLEFT");
-    bar:SetPoint("BOTTOMRIGHT");
-    bar:SetHeight(34);
-    local barLine = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 0.12);
-    barLine:SetPoint("BOTTOMLEFT", bar, "TOPLEFT");
-    barLine:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT");
-    barLine:SetHeight(1);
+    pageCounter = lootBackground:CreateFontString(nil, "OVERLAY", "GameFontNormal");
+    pageCounter:SetPoint("RIGHT", lootBackground, "BOTTOMRIGHT", -78, 18);
+    pageCounter:Hide();
 end
 
 local function CreateTitleBar(frame)
-    local bar = SolidTexture(frame, "BORDER", 0.12, 0.12, 0.12, 1);
-    bar:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4);
-    bar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4);
+    local bar = SolidTexture(frame, "ARTWORK", 1, 1, 1, 1);
+    bar:SetPoint("TOPLEFT", frame, "TOPLEFT", 3, -3);
+    bar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3);
     bar:SetHeight(22);
-    frame.titleBar = bar;
+    bar:SetGradientAlpha("VERTICAL", 0.05, 0.05, 0.05, 1, 0.13, 0.12, 0.1, 1);
+    local barLine = SolidTexture(frame, "ARTWORK", BRONZE[1], BRONZE[2], BRONZE[3], 0.6);
+    barLine:SetPoint("TOPLEFT", bar, "BOTTOMLEFT");
+    barLine:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT");
+    barLine:SetHeight(1);
 
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight");
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal");
     title:SetPoint("CENTER", bar, "CENTER");
     title:SetText(AL["AtlasLoot"]);
 
@@ -1041,16 +1255,24 @@ function AtlasLootDefaultFrame_OnLoad(frame)
     frame:SetHeight(FRAME_HEIGHT);
     frame:RegisterForDrag("LeftButton");
 
+    --Dark metal frame: black outline, a bronze highlight, then a dark inner line
+    frame:SetBackdrop(PANEL_BACKDROP);
+    frame:SetBackdropColor(0.06, 0.06, 0.06, 0.96);
+    frame:SetBackdropBorderColor(0, 0, 0, 1);
+    AddBorder(frame, 1, BRONZE[1], BRONZE[2], BRONZE[3], 1);
+    AddBorder(frame, 2, 0.12, 0.1, 0.07, 1);
+
     CreateTitleBar(frame);
 
-    local dropdownWidth = (LOOT_WIDTH - PAD) / 2;
+    --Module and subcategory dropdowns, then the search box, above the loot page
+    local dropdownWidth, searchWidth = 210, LOOT_WIDTH - 2 * 210 - 2 * 8 - 24;
     moduleBox = CreateDropdown(frame, AL["Select Module"], dropdownWidth);
     moduleBox:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -44);
     subBox = CreateDropdown(frame, AL["Select Subcategory"], dropdownWidth);
-    subBox:SetPoint("LEFT", moduleBox, "RIGHT", PAD, 0);
+    subBox:SetPoint("LEFT", moduleBox, "RIGHT", 8, 0);
 
     CreateLootPanel(frame);
-    CreateSearch();
+    CreateSearch(frame, searchWidth);
     CreateSidePanels(frame);
 
     UpdateDropdowns();
@@ -1150,26 +1372,28 @@ end
 
 --[[
 AtlasLoot_SetNewStyle(style):
-Sets the loot browser background
-	style = "new": dark
-	style = "old": parchment with a gold border
+Sets the loot page style, from the Loot Browser Style option
+	style = "new": parchment, like a spellbook page
+	style = "old": dark
 ]]
 function AtlasLoot_SetNewStyle(style)
-    local frame = AtlasLootDefaultFrame;
-    if style == "old" then
-        frame:SetBackdrop({
-            bgFile = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 },
-        });
-        frame:SetBackdropColor(1, 1, 1, 1);
-        frame:SetBackdropBorderColor(1, 0.675, 0.125, 1);
-        frame.titleBar:SetVertexColor(0.2, 0.12, 0.05, 0.9);
+    parchment = style ~= "old";
+    for _, texture in ipairs(pageTextures.parchment) do
+        if parchment then texture:Show() else texture:Hide() end
+    end
+    for _, texture in ipairs(pageTextures.dark) do
+        if parchment then texture:Hide() else texture:Show() end
+    end
+    if parchment then
+        pageCounter:SetTextColor(INK[1], INK[2], INK[3]);
+        pageCounter:SetShadowColor(0, 0, 0, 0);
     else
-        frame:SetBackdrop(PANEL_BACKDROP);
-        frame:SetBackdropColor(0.05, 0.05, 0.05, 0.94);
-        frame:SetBackdropBorderColor(0.45, 0.45, 0.45, 1);
-        frame.titleBar:SetVertexColor(0.12, 0.12, 0.12, 1);
+        pageCounter:SetTextColor(1, 0.82, 0);
+        pageCounter:SetShadowColor(0, 0, 0, 1);
+    end
+    --Restyle the loot rows and redraw the page in the new colors
+    if itemsLayoutModern then
+        SetItemsFrameLayout(true);
+        RedrawPage();
     end
 end
