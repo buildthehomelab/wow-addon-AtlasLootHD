@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.0.7 - 2026-09-25
+- Show item tooltips on GameTooltip so addons and shift-compare work
+
 ## v1.0.6 - 2026-09-25
 - Make parchment text readable and the page paler
 

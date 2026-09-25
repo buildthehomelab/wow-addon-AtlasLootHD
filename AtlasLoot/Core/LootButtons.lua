@@ -131,38 +131,42 @@ function AtlasLootItem_OnEnter()
                 if((AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled)))) or IsShiftKeyDown() then
                     GameTooltip_ShowCompareItem(); --- CALL MISSING METHOD TO SHOW 2 TOOLTIPS (Item Compare)
                 end
-            --Default game tooltips
+            --Default game tooltips.  Items use GameTooltip rather than AtlasLootTooltip so other
+            --addons' tooltip lines show, and so the tooltip is redrawn when the compare key changes.
             else
                 if(this.itemID ~= nil) then
+                    this.UpdateTooltip = AtlasLootItem_UpdateTooltip;
+                    this.tooltipCompare = IsModifiedClick("COMPAREITEMS") and true or false;
                     if(GetItemInfo(this.itemID) ~= nil) then
                         getglobal(this:GetName().."_Unsafe"):Hide();
-                        AtlasLootTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
-                        AtlasLootTooltip:SetHyperlink("item:"..this.itemID..":0:0:0");
+                        GameTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
+                        GameTooltip:SetHyperlink("item:"..this.itemID..":0:0:0");
                         if ( AtlasLoot.db.profile.ItemIDs ) then
-                            AtlasLootTooltip:AddLine(BLUE..AL["ItemID:"].." "..this.itemID, nil, nil, nil, 1);
+                            GameTooltip:AddLine(BLUE..AL["ItemID:"].." "..this.itemID, nil, nil, nil, 1);
                         end
                         if( this.droprate ~= nil) then
-                            AtlasLootTooltip:AddLine(AL["Drop Rate: "]..this.droprate, 1, 1, 0);
+                            GameTooltip:AddLine(AL["Drop Rate: "]..this.droprate, 1, 1, 0);
                         end
                         if( DKP ~= nil and DKP ~= "" ) then
-                            AtlasLootTooltip:AddLine(RED..DKP.." "..AL["DKP"], 1, 1, 0);
+                            GameTooltip:AddLine(RED..DKP.." "..AL["DKP"], 1, 1, 0);
                         end
                         if( priority ~= nil and priority ~= "" ) then
-                            AtlasLootTooltip:AddLine(GREEN..AL["Priority:"].." "..priority, 1, 1, 0);
+                            GameTooltip:AddLine(GREEN..AL["Priority:"].." "..priority, 1, 1, 0);
                         end
-                        AtlasLootTooltip:Show();
-                        if((AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled)))) or IsShiftKeyDown() then
-                            AtlasLootItem_ShowCompareItem(); --- CALL MISSING METHOD TO SHOW 2 TOOLTIPS (Item Compare)
+                        GameTooltip:Show();
+                        --GameTooltip shows the comparison itself while the compare key is held
+                        if (AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled))) then
+                            GameTooltip_ShowCompareItem(GameTooltip, 1);
                         end
                     else
-                        AtlasLootTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
-                        AtlasLootTooltip:ClearLines();
-                        AtlasLootTooltip:AddLine(RED..AL["Item Unavailable"], nil, nil, nil, 1);
-                        AtlasLootTooltip:AddLine(BLUE..AL["ItemID:"].." "..this.itemID, nil, nil, nil, 1);
-                        AtlasLootTooltip:AddLine(AL["This item is unsafe.  To view this item without the risk of disconnection, you need to have first seen it in the game world. This is a restriction enforced by Blizzard since Patch 1.10."], nil, nil, nil, 1);
-                        AtlasLootTooltip:AddLine(" ");
-                        AtlasLootTooltip:AddLine(AL["You can right-click to attempt to query the server.  You may be disconnected."], nil, nil, nil, 1);
-                        AtlasLootTooltip:Show();
+                        GameTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
+                        GameTooltip:ClearLines();
+                        GameTooltip:AddLine(RED..AL["Item Unavailable"], nil, nil, nil, 1);
+                        GameTooltip:AddLine(BLUE..AL["ItemID:"].." "..this.itemID, nil, nil, nil, 1);
+                        GameTooltip:AddLine(AL["This item is unsafe.  To view this item without the risk of disconnection, you need to have first seen it in the game world. This is a restriction enforced by Blizzard since Patch 1.10."], nil, nil, nil, 1);
+                        GameTooltip:AddLine(" ");
+                        GameTooltip:AddLine(AL["You can right-click to attempt to query the server.  You may be disconnected."], nil, nil, nil, 1);
+                        GameTooltip:Show();
                     end
                 end
             end
@@ -175,6 +179,27 @@ function AtlasLootItem_OnEnter()
             if(this.spellitemID and ((AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled))) or IsShiftKeyDown())) then
                 AtlasLootItem_ShowCompareItem(); --- CALL MISSING METHOD TO SHOW 2 TOOLTIPS (Item Compare)
             end    
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Item UpdateTooltip
+-- GameTooltip calls this on its owner every TOOLTIP_UPDATE_TIME, as it does for
+-- bag slots. Redraw when the compare key is pressed or released, so holding
+-- shift over an item shows the equipped item next to it.
+--------------------------------------------------------------------------------
+function AtlasLootItem_UpdateTooltip(self)
+    local compare = IsModifiedClick("COMPAREITEMS") and true or false;
+    if compare ~= self.tooltipCompare then
+        local owner = this;
+        this = self;
+        AtlasLootItem_OnEnter();
+        this = owner;
+        if not compare then
+            ShoppingTooltip1:Hide();
+            ShoppingTooltip2:Hide();
+            ShoppingTooltip3:Hide();
         end
     end
 end
