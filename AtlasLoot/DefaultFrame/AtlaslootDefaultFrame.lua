@@ -927,7 +927,7 @@ local function CreateTitleBar(frame)
 
     local version = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall");
     version:SetPoint("RIGHT", close, "LEFT", -2, 0);
-    version:SetText(strmatch(ATLASLOOT_VERSION, "v[%d%.]+") or "");
+    version:SetText("v"..ATLASLOOT_VERSION_NUMBER);
 
     local options = CreateFlatButton(frame, AL["Options"], AtlasLootOptions_Toggle);
     options:SetPoint("LEFT", bar, "LEFT", 4, 0);

@@ -38,7 +38,11 @@ local AL = LibStub("AceLocale-3.0"):GetLocale("AtlasLoot");
 local VERSION_MAJOR = "5";
 local VERSION_MINOR = "11";
 local VERSION_BOSSES = "04";
-ATLASLOOT_VERSION = "|cffFF8400AtlasLoot Enhanced v"..VERSION_MAJOR.."."..VERSION_MINOR.."."..VERSION_BOSSES.."|r";
+--The displayed version is the AtlasLootHD one from the TOC, bumped on every commit.
+--VERSION_MAJOR/MINOR/BOSSES stay the upstream version for saved variable migrations.
+ATLASLOOT_VERSION_NUMBER = GetAddOnMetadata("AtlasLoot", "Version") or "?";
+ATLASLOOT_VERSION_TEXT = "AtlasLootHD v"..ATLASLOOT_VERSION_NUMBER;
+ATLASLOOT_VERSION = "|cffFF8400"..ATLASLOOT_VERSION_TEXT.."|r";
 --Now allows for multiple compatible Atlas versions.  Always put the newest first
 ATLASLOOT_CURRENT_ATLAS = {"1.17.1", "1.17.0"};
 ATLASLOOT_PREVIEW_ATLAS = {"1.17.3", "1.17.2"};
@@ -325,9 +329,9 @@ function AtlasLoot_OnVariablesLoaded()
 	if(EarthFeature_AddButton) then
 		EarthFeature_AddButton(
 			{
-				id = string.sub(ATLASLOOT_VERSION, 11, 28);
-				name = string.sub(ATLASLOOT_VERSION, 11, 28);
-				subtext = string.sub(ATLASLOOT_VERSION, 30, 39);
+				id = "AtlasLootHD";
+				name = "AtlasLootHD";
+				subtext = "v"..ATLASLOOT_VERSION_NUMBER;
 				tooltip = "";
 				icon = "Interface\\Icons\\INV_Box_01";
 				callback = AtlasLoot_ShowMenu;
@@ -337,8 +341,8 @@ function AtlasLoot_OnVariablesLoaded()
 	--Adds AtlasLoot to old style Cosmos installations
 	elseif(Cosmos_RegisterButton) then
 		Cosmos_RegisterButton(
-			string.sub(ATLASLOOT_VERSION, 11, 28),
-			string.sub(ATLASLOOT_VERSION, 11, 28),
+			"AtlasLootHD",
+			"AtlasLootHD",
 			"",
 			"Interface\\Icons\\INV_Box_01",
 			AtlasLoot_ShowMenu

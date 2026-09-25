@@ -2,7 +2,8 @@
 ## Title: AtlasLoot
 ## Notes: Shows the possible loot from the bosses
 ## Author: Hegarol
-## Version: v5.11.04
+## Version: 1.0.0
+## X-Upstream-Version: 5.11.04
 ## X-eMail: manager@atlasloot.net
 ## X-Credits: Daviesh, Lag, Cellelach, Asurn, Pernicus and many others
 ## X-Category: Map

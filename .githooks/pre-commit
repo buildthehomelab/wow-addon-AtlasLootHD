@@ -1,0 +1,12 @@
+#!/bin/sh
+# Bumps the AtlasLootHD patch version (## Version: in AtlasLoot.toc) on every
+# commit, so each commit carries its own version.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skip for one commit:    git commit --no-verify
+# Bump major/minor:       edit the TOC by hand, e.g. to 1.1.0; the next commit is 1.1.1
+set -e
+
+toc="AtlasLoot/AtlasLoot.toc"
+perl -pi -e 's/^(## Version: \d+\.\d+\.)(\d+)/$1.($2 + 1)/e' "$toc"
+git add "$toc"

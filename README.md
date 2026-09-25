@@ -26,6 +26,18 @@ Copy these folders into `World of Warcraft/Interface/AddOns/`:
 - `AtlasLoot_WorldEvents`
 - `AtlasLoot_WrathoftheLichKing`
 
+## Versioning
+
+The AtlasLootHD version is the `## Version:` line in `AtlasLoot/AtlasLoot.toc`. It shows in the browser's title bar, the options panel and the minimap button tooltip. The upstream AtlasLoot Enhanced version it's based on is kept in `## X-Upstream-Version:`.
+
+A pre-commit hook bumps the patch number on every commit (1.0.0, 1.0.1, 1.0.2, ...). Enable it once after cloning:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+For a bigger release, edit the TOC by hand (for example to `1.1.0`); the next commit becomes `1.1.1`. Use `git commit --no-verify` to commit without a bump.
+
 ## Credits and license
 
 AtlasLoot Enhanced is by Hegarol, Daviesh and the AtlasLoot team. This fork is released under the same GPL v2 license; see [AtlasLoot/Documentation/LICENSE.txt](AtlasLoot/Documentation/LICENSE.txt).

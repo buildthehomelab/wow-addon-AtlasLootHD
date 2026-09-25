@@ -55,7 +55,7 @@ end
 
 function AtlasLoot_MinimapButtonOnEnter()
     GameTooltip:SetOwner(this, "ANCHOR_LEFT");
-    GameTooltip:SetText(string.sub(ATLASLOOT_VERSION, 11, 28));
+    GameTooltip:SetText(ATLASLOOT_VERSION_TEXT);
     GameTooltip:AddLine(AL["|cff1eff00Left-Click|r Browse Loot Tables"]);
     GameTooltip:AddLine(AL["|cffff0000Shift-Click|r View Options"]);
     GameTooltip:AddLine(AL["|cffccccccRight-Click + Drag|r Move Minimap Button"]);
