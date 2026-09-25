@@ -67,7 +67,7 @@ local modules;
 
 local lootBackground, moduleBox, subBox;
 local difficultyLines, bossLines, extraLines = {}, {}, {};
-local bossScroll, searchBox, searchPlaceholder;
+local bossScrollBar, searchBox, searchPlaceholder;
 local itemsLayoutModern, backButtonWidth;
 
 --[[
@@ -197,18 +197,19 @@ local function CreateDropdown(parent, label, width)
     box.label:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 2, 1);
     box.label:SetText(label);
 
-    box.arrow = CreateFrame("Button", nil, box);
-    box.arrow:SetWidth(22);
-    box.arrow:SetHeight(22);
-    box.arrow:SetPoint("RIGHT", box, "RIGHT", -2, 0);
-    box.arrow:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up");
-    box.arrow:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Down");
-    box.arrow:SetDisabledTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Disabled");
-    box.arrow:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD");
+    --Not called "arrow": Dewdrop treats a parent with an arrow field as one of its own menu buttons
+    box.arrowButton = CreateFrame("Button", nil, box);
+    box.arrowButton:SetWidth(22);
+    box.arrowButton:SetHeight(22);
+    box.arrowButton:SetPoint("RIGHT", box, "RIGHT", -2, 0);
+    box.arrowButton:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up");
+    box.arrowButton:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Down");
+    box.arrowButton:SetDisabledTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Disabled");
+    box.arrowButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD");
 
     box.text = box:CreateFontString(nil, "OVERLAY", "GameFontHighlight");
     box.text:SetPoint("LEFT", box, "LEFT", 8, 0);
-    box.text:SetPoint("RIGHT", box.arrow, "LEFT", -4, 0);
+    box.text:SetPoint("RIGHT", box.arrowButton, "LEFT", -4, 0);
     box.text:SetJustifyH("RIGHT");
 
     local highlight = SolidTexture(box, "HIGHLIGHT", 1, 1, 1, 0.06);
@@ -216,18 +217,18 @@ local function CreateDropdown(parent, label, width)
     highlight:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -4, 4);
 
     box:SetScript("OnClick", function() ToggleDropdown(box) end);
-    box.arrow:SetScript("OnClick", function() ToggleDropdown(box) end);
+    box.arrowButton:SetScript("OnClick", function() ToggleDropdown(box) end);
     return box;
 end
 
 local function SetDropdownEnabled(box, enabled)
     if enabled then
         box:Enable();
-        box.arrow:Enable();
+        box.arrowButton:Enable();
         box.text:SetTextColor(1, 1, 1);
     else
         box:Disable();
-        box.arrow:Disable();
+        box.arrowButton:Disable();
         box.text:SetTextColor(0.5, 0.5, 0.5);
     end
 end
@@ -418,8 +419,8 @@ local function SelectSub(index)
     else
         state.bosses = PageEntries(sub.id);
     end
-    bossScroll.offset = 0;
-    getglobal(bossScroll:GetName().."ScrollBar"):SetValue(0);
+    state.bossOffset = 0;
+    bossScrollBar:SetValue(0);
     UpdateDropdowns();
     if #state.bosses > 0 then
         SelectBoss(1);
@@ -475,9 +476,17 @@ local function UpdateDifficulties()
 end
 
 local function UpdateBossList()
-    FauxScrollFrame_Update(bossScroll, #state.bosses, BOSS_LINES, LINE_HEIGHT);
-    local offset = FauxScrollFrame_GetOffset(bossScroll);
-    local width = SIDE_WIDTH - (bossScroll:IsShown() and 30 or 10);
+    local maxOffset = math.max(#state.bosses - BOSS_LINES, 0);
+    local offset = math.min(state.bossOffset or 0, maxOffset);
+    state.bossOffset = offset;
+    bossScrollBar:SetMinMaxValues(0, maxOffset);
+    bossScrollBar:SetValue(offset);
+    if maxOffset > 0 then
+        bossScrollBar:Show();
+    else
+        bossScrollBar:Hide();
+    end
+    local width = SIDE_WIDTH - (maxOffset > 0 and 24 or 10);
     for i, line in ipairs(bossLines) do
         local index = offset + i;
         local entry = state.bosses[index];
@@ -518,7 +527,7 @@ local function UpdateExtraList()
 end
 
 function AtlasLootDefaultFrame_UpdateSidePanels()
-    if not bossScroll then
+    if not bossScrollBar then
         return;
     end
     UpdateDifficulties();
@@ -838,16 +847,40 @@ local function CreateSidePanels(frame)
     bossPanel:SetPoint("BOTTOMRIGHT", extraPanel, "TOPRIGHT", 0, 6);
     SkinPanel(bossPanel, 0.6);
 
-    bossScroll = CreateFrame("ScrollFrame", "AtlasLootDefaultFrameBossScroll", bossPanel, "FauxScrollFrameTemplate");
-    bossScroll:SetPoint("TOPLEFT", bossPanel, "TOPLEFT", 5, -5);
-    bossScroll:SetPoint("BOTTOMRIGHT", bossPanel, "BOTTOMRIGHT", -26, 5);
-    bossScroll:SetScript("OnVerticalScroll", function(self, offset)
-        FauxScrollFrame_OnVerticalScroll(self, offset, LINE_HEIGHT, UpdateBossList);
-    end);
     for i = 1, BOSS_LINES do
         bossLines[i] = CreateLine(bossPanel, i, OnBossClick);
-        bossLines[i]:SetFrameLevel(bossScroll:GetFrameLevel() + 2);
     end
+
+    --A plain slider rather than FauxScrollFrameTemplate, whose scripts differ between clients
+    bossScrollBar = CreateFrame("Slider", "AtlasLootDefaultFrameBossScrollBar", bossPanel);
+    bossScrollBar:SetWidth(6);
+    bossScrollBar:SetPoint("TOPRIGHT", bossPanel, "TOPRIGHT", -8, -8);
+    bossScrollBar:SetPoint("BOTTOMRIGHT", bossPanel, "BOTTOMRIGHT", -8, 8);
+    bossScrollBar:SetOrientation("VERTICAL");
+    bossScrollBar:SetValueStep(1);
+    bossScrollBar:SetMinMaxValues(0, 0);
+    bossScrollBar:SetValue(0);
+    bossScrollBar:EnableMouse(true);
+    bossScrollBar:SetThumbTexture(WHITE_TEXTURE);
+    local thumb = bossScrollBar:GetThumbTexture();
+    thumb:SetVertexColor(1, 0.82, 0, 0.7);
+    thumb:SetWidth(6);
+    thumb:SetHeight(24);
+    local track = SolidTexture(bossScrollBar, "BACKGROUND", 1, 1, 1, 0.08);
+    track:SetAllPoints();
+    bossScrollBar:SetScript("OnValueChanged", function(self, value)
+        local offset = floor(value + 0.5);
+        if offset ~= state.bossOffset then
+            state.bossOffset = offset;
+            UpdateBossList();
+        end
+    end);
+    bossScrollBar:Hide();
+
+    bossPanel:EnableMouseWheel(true);
+    bossPanel:SetScript("OnMouseWheel", function(self, delta)
+        bossScrollBar:SetValue(bossScrollBar:GetValue() - delta * 3);
+    end);
 end
 
 local function CreateLootPanel(frame)
