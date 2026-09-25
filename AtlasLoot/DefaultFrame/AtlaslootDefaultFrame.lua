@@ -41,13 +41,13 @@ local DIFFICULTY_LINES, BOSS_LINES, EXTRA_LINES = 4, 15, 6;
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8";
 local GOLD_DOT = "Interface\\AddOns\\AtlasLoot\\Images\\gold";
 local SILVER_DOT = "Interface\\AddOns\\AtlasLoot\\Images\\silver";
---Stock 3.3.5 art: the achievement row parchment and the quest greeting divider
+--Stock 3.3.5 art: the achievement row parchment
 local PARCHMENT_TEXTURE = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal";
-local DIVIDER_TEXTURE = "Interface\\QuestFrame\\UI-HorizontalBreak";
 
 --Theme colors: a dark metal frame around a parchment loot page
-local INK = { 0.22, 0.14, 0.06 };
-local INK_LIGHT = { 0.38, 0.29, 0.18 };
+--INK_LIGHT stays under the 0.25 luminance ParchmentColor leaves alone
+local INK = { 0.2, 0.12, 0.05 };
+local INK_LIGHT = { 0.32, 0.23, 0.12 };
 local BRONZE = { 0.55, 0.44, 0.26 };
 local EDGE = { 0.3, 0.25, 0.17 };
 
@@ -833,15 +833,19 @@ local function ParchmentColor(alpha, hex)
     local g = tonumber(strsub(hex, 3, 4), 16) / 255;
     local b = tonumber(strsub(hex, 5, 6), 16) / 255;
     local luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-    if luminance <= 0.4 then
-        return "|c"..alpha..hex;
-    end
     if math.max(r, g, b) - math.min(r, g, b) < 0.15 then
-        --White and grey: the lighter the color, the darker the ink
-        local fade = (1 - luminance) * 0.6;
-        r, g, b = INK[1] + fade, INK[2] + fade, INK[3] + fade;
+        --White becomes ink, grey (poor items) a lighter ink
+        if luminance <= 0.45 then
+            return "|c"..alpha..hex;
+        end
+        local ink = luminance >= 0.8 and INK or INK_LIGHT;
+        r, g, b = ink[1], ink[2], ink[3];
     else
-        local scale = 0.32 / luminance;
+        --Other colors keep their hue at a brightness that reads on parchment
+        if luminance <= 0.25 then
+            return "|c"..alpha..hex;
+        end
+        local scale = 0.2 / luminance;
         r, g, b = r * scale, g * scale, b * scale;
     end
     return format("|c%s%02x%02x%02x", alpha, floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5));
@@ -1160,31 +1164,43 @@ local function CreateLootPanel(frame)
     paper:SetPoint("TOPLEFT", 1, -1);
     paper:SetPoint("BOTTOMRIGHT", -1, 1);
     tinsert(page, paper);
+    --A beige wash brings the orange achievement parchment closer to a pale spellbook page
+    local wash = SolidTexture(lootBackground, "BORDER", 0.96, 0.9, 0.76, 0.35);
+    wash:SetPoint("TOPLEFT", 1, -1);
+    wash:SetPoint("BOTTOMRIGHT", -1, 1);
+    tinsert(page, wash);
     --Each edge: two anchors, then the gradient's alpha from bottom to top or left to right
     local edges = {
-        { "TOPLEFT", 1, -1, "TOPRIGHT", -1, -1, "VERTICAL", 0, 0.35 },
-        { "BOTTOMLEFT", 1, 1, "BOTTOMRIGHT", -1, 1, "VERTICAL", 0.35, 0 },
-        { "TOPLEFT", 1, -1, "BOTTOMLEFT", 1, 1, "HORIZONTAL", 0.35, 0 },
-        { "TOPRIGHT", -1, -1, "BOTTOMRIGHT", -1, 1, "HORIZONTAL", 0, 0.35 },
+        { "TOPLEFT", 1, -1, "TOPRIGHT", -1, -1, "VERTICAL", 0, 0.2 },
+        { "BOTTOMLEFT", 1, 1, "BOTTOMRIGHT", -1, 1, "VERTICAL", 0.2, 0 },
+        { "TOPLEFT", 1, -1, "BOTTOMLEFT", 1, 1, "HORIZONTAL", 0.2, 0 },
+        { "TOPRIGHT", -1, -1, "BOTTOMRIGHT", -1, 1, "HORIZONTAL", 0, 0.2 },
     };
     for _, edge in ipairs(edges) do
         local shade = SolidTexture(lootBackground, "BORDER", 1, 1, 1, 1);
         shade:SetPoint(edge[1], edge[2], edge[3]);
         shade:SetPoint(edge[4], edge[5], edge[6]);
         if edge[7] == "VERTICAL" then
-            shade:SetHeight(40);
+            shade:SetHeight(30);
         else
-            shade:SetWidth(40);
+            shade:SetWidth(30);
         end
         shade:SetGradientAlpha(edge[7], 0.25, 0.14, 0.04, edge[8], 0.25, 0.14, 0.04, edge[9]);
         tinsert(page, shade);
     end
-    local divider = lootBackground:CreateTexture(nil, "ARTWORK");
-    divider:SetTexture(DIVIDER_TEXTURE);
-    divider:SetPoint("TOPLEFT", 6, -28);
-    divider:SetPoint("TOPRIGHT", -6, -28);
-    divider:SetHeight(20);
-    tinsert(page, divider);
+    --An engraved rule under the boss name: a dark line over a light one, fading to the right
+    local rule = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
+    rule:SetPoint("TOPLEFT", 14, -37);
+    rule:SetPoint("TOPRIGHT", -14, -37);
+    rule:SetHeight(2);
+    rule:SetGradientAlpha("HORIZONTAL", INK[1], INK[2], INK[3], 0.75, INK[1], INK[2], INK[3], 0);
+    tinsert(page, rule);
+    local ruleLight = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
+    ruleLight:SetPoint("TOPLEFT", rule, "BOTTOMLEFT");
+    ruleLight:SetPoint("TOPRIGHT", rule, "BOTTOMRIGHT");
+    ruleLight:SetHeight(1);
+    ruleLight:SetGradientAlpha("HORIZONTAL", 1, 0.96, 0.85, 0.5, 1, 0.96, 0.85, 0);
+    tinsert(page, ruleLight);
 
     --Classic Style: a dark page with a faint header band and gold rule
     local dark = pageTextures.dark;

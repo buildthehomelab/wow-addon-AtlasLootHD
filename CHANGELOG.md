@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.0.6 - 2026-09-25
+- Make parchment text readable and the page paler
+
 ## v1.0.5 - 2026-09-25
 - Theme the loot browser like the modern WoW spellbook
 
