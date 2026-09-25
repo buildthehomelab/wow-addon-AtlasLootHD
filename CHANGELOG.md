@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.0.8 - 2026-09-25
+- Show crafting recipe tooltips on GameTooltip too
+
 ## v1.0.7 - 2026-09-25
 - Show item tooltips on GameTooltip so addons and shift-compare work
 

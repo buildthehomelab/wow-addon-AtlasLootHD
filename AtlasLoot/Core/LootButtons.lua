@@ -171,14 +171,19 @@ function AtlasLootItem_OnEnter()
                 end
             end
         else
+            --Recipes use GameTooltip too, so other addons' lines show and the tooltip is redrawn
+            --when the compare key changes. A recipe is a spell, which GameTooltip doesn't compare,
+            --so the item it makes is compared here.
             spellID = string.sub(this.itemID, 2);
-            AtlasLootTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
-            AtlasLootTooltip:ClearLines();
-            AtlasLootTooltip:SetHyperlink(AtlasLoot_GetEnchantLink(spellID));
-            AtlasLootTooltip:Show();
-            if(this.spellitemID and ((AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled))) or IsShiftKeyDown())) then
-                AtlasLootItem_ShowCompareItem(); --- CALL MISSING METHOD TO SHOW 2 TOOLTIPS (Item Compare)
-            end    
+            this.UpdateTooltip = AtlasLootItem_UpdateTooltip;
+            this.tooltipCompare = IsModifiedClick("COMPAREITEMS") and true or false;
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT", -(this:GetWidth() / 2), 24);
+            GameTooltip:ClearLines();
+            GameTooltip:SetHyperlink(AtlasLoot_GetEnchantLink(spellID));
+            GameTooltip:Show();
+            if(this.spellitemID and ((AtlasLoot.db.profile.EquipCompare and ((not EquipCompare_RegisterTooltip) or (not EquipCompare_Enabled))) or this.tooltipCompare)) then
+                AtlasLootItem_ShowCompareItem(GameTooltip);
+            end
         end
     end
 end
@@ -221,6 +226,10 @@ function AtlasLootItem_OnLeave()
 		    AtlasLootTooltip:Hide();
             GameTooltip:Hide();
 	    end
+    end
+    --Recipes, and items with the default tooltips, are shown on GameTooltip
+    if GameTooltip:GetOwner() == this then
+        GameTooltip:Hide();
     end
     if ( ShoppingTooltip2:IsVisible() or ShoppingTooltip1.IsVisible) then
        ShoppingTooltip2:Hide();
@@ -308,36 +317,38 @@ end
 -------
 -- Missing GameToolTip method
 -- Enables item comparing. I've ripped this method directly from GameTooltip.lua and modified to work with AtlasLootTooltip /siena
+-- tooltip: the tooltip to compare against, AtlasLootTooltip by default
 -------
-function AtlasLootItem_ShowCompareItem()
+function AtlasLootItem_ShowCompareItem(tooltip)
+   tooltip = tooltip or AtlasLootTooltip;
    local shift = 1;
    local item,link = nil,nil
    if this.spellitemID and this.spellitemID ~= "" and this.spellitemID ~= 0 then
-      item = AtlasLootTooltip:GetSpell()
+      item = tooltip:GetSpell()
       _,link = GetItemInfo(this.spellitemID)
    else
-      item,link = AtlasLootTooltip:GetItem();
+      item,link = tooltip:GetItem();
    end
 
    if ( not link ) then
       return
    end
    
-   ShoppingTooltip1:SetOwner(AtlasLootTooltip, "ANCHOR_NONE");
-   ShoppingTooltip2:SetOwner(AtlasLootTooltip, "ANCHOR_NONE");
-   ShoppingTooltip3:SetOwner(AtlasLootTooltip, "ANCHOR_NONE");
+   ShoppingTooltip1:SetOwner(tooltip, "ANCHOR_NONE");
+   ShoppingTooltip2:SetOwner(tooltip, "ANCHOR_NONE");
+   ShoppingTooltip3:SetOwner(tooltip, "ANCHOR_NONE");
    
    local item1 = nil;
    local item2 = nil;
    local item3 = nil;
    local side = "left";
-   if ( ShoppingTooltip1:SetHyperlinkCompareItem(link, 1, 1, AtlasLootTooltip) ) then
+   if ( ShoppingTooltip1:SetHyperlinkCompareItem(link, 1, 1, tooltip) ) then
       item1 = true;
    end
-   if ( ShoppingTooltip2:SetHyperlinkCompareItem(link, 2, 1, AtlasLootTooltip) ) then
+   if ( ShoppingTooltip2:SetHyperlinkCompareItem(link, 2, 1, tooltip) ) then
       item2 = true;
    end
-   if ( ShoppingTooltip3:SetHyperlinkCompareItem(link, 3, 1, AtlasLootTooltip) ) then
+   if ( ShoppingTooltip3:SetHyperlinkCompareItem(link, 3, 1, tooltip) ) then
       item3 = true;
    end
    if not item1 and not item2 and not item3 then 
@@ -347,24 +358,24 @@ function AtlasLootItem_ShowCompareItem()
    if item3 then
         if not item1 then
             item1, item3 = true, nil;
-            ShoppingTooltip1:SetHyperlinkCompareItem(link, 3, 1, AtlasLootTooltip);
+            ShoppingTooltip1:SetHyperlinkCompareItem(link, 3, 1, tooltip);
         elseif not item2 then
             item2, item3 = true, nil;
-            ShoppingTooltip2:SetHyperlinkCompareItem(link, 3, 1, AtlasLootTooltip);
+            ShoppingTooltip2:SetHyperlinkCompareItem(link, 3, 1, tooltip);
         end
     end
     if item2 and not item1 then
         item1, item2 = true, nil;
-        ShoppingTooltip1:SetHyperlinkCompareItem(link, 2, 1, AtlasLootTooltip);
+        ShoppingTooltip1:SetHyperlinkCompareItem(link, 2, 1, tooltip);
     end
    
-   local left, right, anchor1, anchor2 = AtlasLootTooltip:GetLeft(), AtlasLootTooltip:GetRight(), "TOPLEFT", "TOPRIGHT";
+   local left, right, anchor1, anchor2 = tooltip:GetLeft(), tooltip:GetRight(), "TOPLEFT", "TOPRIGHT";
    if not left or not right then return end
 	if (GetScreenWidth() - right) < left then anchor1, anchor2 = anchor2, anchor1 end
     
     if item1 then
 		ShoppingTooltip1:ClearAllPoints();
-		ShoppingTooltip1:SetPoint(anchor1, AtlasLootTooltip, anchor2, 0, -10);
+		ShoppingTooltip1:SetPoint(anchor1, tooltip, anchor2, 0, -10);
 		ShoppingTooltip1:Show();
 
 		if item2 then
