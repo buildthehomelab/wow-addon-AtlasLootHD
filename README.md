@@ -31,13 +31,15 @@ Copy these folders into `World of Warcraft/Interface/AddOns/`:
 
 The AtlasLootHD version is the `## Version:` line in `AtlasLoot/AtlasLoot.toc`. It shows in the browser's title bar, the options panel and the minimap button tooltip. The upstream AtlasLoot Enhanced version it's based on is kept in `## X-Upstream-Version:`.
 
-A pre-commit hook bumps the patch number on every commit (1.0.0, 1.0.1, 1.0.2, ...). Enable it once after cloning:
+The version keeps a `v` prefix (`v1.0.2`). Atlas compares module versions as plain strings and disables AtlasLoot if its version sorts below `5.11.03`; a leading `v` sorts after any digit, so the check always passes.
+
+A pre-commit hook bumps the patch number on every commit (v1.0.2, v1.0.3, ...) and refuses the commit if the version would fail the Atlas check. Enable it once after cloning:
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-For a bigger release, edit the TOC by hand (for example to `1.1.0`); the next commit becomes `1.1.1`. Use `git commit --no-verify` to commit without a bump.
+For a bigger release, edit the TOC by hand (for example to `v1.1.0`); the next commit becomes `v1.1.1`. Use `git commit --no-verify` to commit without a bump.
 
 ## Credits and license
 

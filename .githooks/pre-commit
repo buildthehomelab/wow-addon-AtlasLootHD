@@ -4,9 +4,18 @@
 #
 # Enable once per clone:  git config core.hooksPath .githooks
 # Skip for one commit:    git commit --no-verify
-# Bump major/minor:       edit the TOC by hand, e.g. to 1.1.0; the next commit is 1.1.1
+# Bump major/minor:       edit the TOC by hand, e.g. to v1.1.0; the next commit is v1.1.1
 set -e
 
 toc="AtlasLoot/AtlasLoot.toc"
-perl -pi -e 's/^(## Version: \d+\.\d+\.)(\d+)/$1.($2 + 1)/e' "$toc"
+perl -pi -e 's/^(## Version: v?\d+\.\d+\.)(\d+)/$1.($2 + 1)/e' "$toc"
+
+# Atlas disables AtlasLoot when this version sorts below "5.11.03" as a string,
+# which is why it keeps its "v" prefix
+version=$(perl -ne 'print $1 if /^## Version: (\S+)/' "$toc")
+if perl -e 'exit($ARGV[0] lt "5.11.03" ? 0 : 1)' "$version"; then
+    echo "pre-commit: ## Version: $version sorts below 5.11.03, so Atlas would disable AtlasLoot. Keep the \"v\" prefix." >&2
+    exit 1
+fi
+
 git add "$toc"
