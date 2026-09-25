@@ -605,6 +605,8 @@ local function StyleItemButton(name, modern)
         unsafe:SetWidth(ICON_SIZE + 2);
         unsafe:SetHeight(ICON_SIZE + 2);
         unsafe:SetPoint("CENTER", icon, "CENTER");
+        --Uncached items are queried automatically, so this is only "loading" now
+        unsafe:SetTexture(0.4, 0.4, 0.4, 1);
         getglobal(name.."_Name"):SetWidth(ITEM_WIDTH - ICON_SIZE - 10);
         getglobal(name.."_Extra"):SetWidth(ITEM_WIDTH - ICON_SIZE - 10);
         highlight:SetTexture(WHITE_TEXTURE);
@@ -627,6 +629,7 @@ local function StyleItemButton(name, modern)
         unsafe:SetWidth(27);
         unsafe:SetHeight(27);
         unsafe:SetPoint("TOPLEFT", button, "TOPLEFT");
+        unsafe:SetTexture(1, 0, 0, 1);
         getglobal(name.."_Name"):SetWidth(205);
         getglobal(name.."_Extra"):SetWidth(205);
         highlight:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight");
@@ -660,9 +663,8 @@ local function SetItemsFrameLayout(modern)
         AtlasLootItemsFrame_NEXT:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 1);
         AtlasLootItemsFrame_BACK:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 40, 6);
         AtlasLootFilterCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 330, 4);
-        AtlasLootServerQueryButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 6);
-        AtlasLootServerQueryButton:SetWidth(110);
-        AtlasLootServerQueryButton:SetHeight(22);
+        --Pages query their uncached items on their own in the browser
+        AtlasLootServerQueryButton:Hide();
     else
         frame:SetWidth(510);
         frame:SetHeight(510);
@@ -679,6 +681,7 @@ local function SetItemsFrameLayout(modern)
         AtlasLootServerQueryButton:SetPoint("BOTTOM", frame, "BOTTOM", 120, 4);
         AtlasLootServerQueryButton:SetWidth(160);
         AtlasLootServerQueryButton:SetHeight(23);
+        AtlasLootServerQueryButton:Show();
         if AtlasLoot.db and AtlasLoot.db.profile.Opaque then
             AtlasLootItemsFrame_Back:SetTexture(0, 0, 0, 1);
         else
@@ -703,17 +706,25 @@ local function UpdateItemsFrameLayout()
     end
 end
 
+--The item a loot button shows, or the item a crafting recipe makes
+local function ButtonItemID(button)
+    local itemID = button.itemID;
+    if type(itemID) == "string" and strsub(itemID, 1, 1) == "s" then
+        itemID = button.spellitemID;
+    end
+    itemID = tonumber(itemID);
+    if itemID and itemID > 0 then
+        return itemID;
+    end
+end
+
 local function UpdateQualityBorders()
     for i = 1, 30 do
         local button = getglobal("AtlasLootItem_"..i);
         local quality;
         if button:IsShown() and not getglobal("AtlasLootItem_"..i.."_Unsafe"):IsShown() then
-            local itemID = button.itemID;
-            if type(itemID) == "string" and strsub(itemID, 1, 1) == "s" then
-                itemID = button.spellitemID;
-            end
-            itemID = tonumber(itemID);
-            if itemID and itemID ~= 0 then
+            local itemID = ButtonItemID(button);
+            if itemID then
                 quality = select(3, GetItemInfo(itemID));
             end
         end
@@ -726,6 +737,81 @@ local function UpdateQualityBorders()
         elseif border then
             border:Hide();
         end
+    end
+end
+
+--[[
+Item cache
+Items missing from the client's item cache are queried from the server when
+their page is shown, a few at a time, and the page is redrawn as they arrive.
+The client keeps its item cache between sessions, so each item is only
+queried once and every page is not queried up front.
+]]
+local QUERY_INTERVAL, QUERY_CHECK_INTERVAL, QUERY_TIMEOUT = 0.05, 0.5, 5;
+local queried, queryQueue, queryWaiting = {}, {}, {};
+local queryTooltip = CreateFrame("GameTooltip", "AtlasLootHDQueryTooltip", UIParent, "GameTooltipTemplate");
+local queryFrame = CreateFrame("Frame");
+queryFrame:Hide();
+
+local function RedrawPage()
+    if not AtlasLootDefaultFrame:IsShown() or AtlasLootItemsFrame:GetParent() ~= lootBackground then
+        return;
+    end
+    local refresh = AtlasLootItemsFrame.refresh;
+    if ATLASLOOT_FILTER_ENABLE then
+        refresh = AtlasLootItemsFrame.refreshOri;
+    end
+    if refresh then
+        AtlasLoot_ShowItemsFrame(refresh[1], refresh[2], refresh[3], refresh[4]);
+    end
+end
+
+queryFrame:SetScript("OnUpdate", function(self, elapsed)
+    self.sinceQuery = self.sinceQuery + elapsed;
+    if #queryQueue > 0 and self.sinceQuery >= QUERY_INTERVAL then
+        self.sinceQuery = 0;
+        local itemID = tremove(queryQueue, 1);
+        tinsert(queryWaiting, itemID);
+        queryTooltip:SetOwner(WorldFrame, "ANCHOR_NONE");
+        queryTooltip:SetHyperlink("item:"..itemID..":0:0:0:0:0:0:0");
+        self.deadline = GetTime() + QUERY_TIMEOUT;
+    end
+
+    self.sinceCheck = self.sinceCheck + elapsed;
+    if self.sinceCheck < QUERY_CHECK_INTERVAL then
+        return;
+    end
+    self.sinceCheck = 0;
+    local arrived;
+    for i = #queryWaiting, 1, -1 do
+        if GetItemInfo(queryWaiting[i]) then
+            tremove(queryWaiting, i);
+            arrived = true;
+        end
+    end
+    if #queryQueue == 0 and (#queryWaiting == 0 or GetTime() > self.deadline) then
+        --Whatever has not arrived by now does not exist on this server
+        queryWaiting = {};
+        self:Hide();
+    end
+    if arrived then
+        RedrawPage();
+    end
+end);
+
+local function QueryPage()
+    for i = 1, 30 do
+        local button = getglobal("AtlasLootItem_"..i);
+        local itemID = button:IsShown() and ButtonItemID(button);
+        if itemID and not queried[itemID] and not GetItemInfo(itemID) then
+            queried[itemID] = true;
+            tinsert(queryQueue, itemID);
+        end
+    end
+    if #queryQueue > 0 and not queryFrame:IsShown() then
+        queryFrame.sinceQuery, queryFrame.sinceCheck = QUERY_INTERVAL, 0;
+        queryFrame.deadline = GetTime() + QUERY_TIMEOUT;
+        queryFrame:Show();
     end
 end
 
@@ -759,6 +845,7 @@ function AtlasLootDefaultFrame_Refresh(dataID)
         end
     end
     UpdateQualityBorders();
+    QueryPage();
     AtlasLootDefaultFrame_UpdateSidePanels();
 end
 
@@ -891,12 +978,22 @@ local function CreateLootPanel(frame)
     lootBackground:SetBackdrop({ bgFile = WHITE_TEXTURE });
     lootBackground:SetBackdropColor(0, 0, 0, 0.5);
 
-    --Red boss name header, the name itself is AtlasLoot_BossName in the items frame
-    local header = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
+    --Boss name header: a faint band over a gold rule that fades out towards both edges.
+    --The name itself is AtlasLoot_BossName in the items frame.
+    local header = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 0.04);
     header:SetPoint("TOPLEFT");
     header:SetPoint("TOPRIGHT");
     header:SetHeight(HEADER_HEIGHT);
-    header:SetGradientAlpha("VERTICAL", 0.4, 0.06, 0.06, 1, 0.6, 0.12, 0.12, 1);
+    local ruleLeft = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
+    ruleLeft:SetPoint("TOPLEFT", header, "BOTTOMLEFT");
+    ruleLeft:SetPoint("TOPRIGHT", header, "BOTTOM");
+    ruleLeft:SetHeight(1);
+    ruleLeft:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0, 1, 0.82, 0, 0.8);
+    local ruleRight = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 1);
+    ruleRight:SetPoint("TOPLEFT", header, "BOTTOM");
+    ruleRight:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT");
+    ruleRight:SetHeight(1);
+    ruleRight:SetGradientAlpha("HORIZONTAL", 1, 0.82, 0, 0.8, 1, 0.82, 0, 0);
 
     local bar = SolidTexture(lootBackground, "ARTWORK", 1, 1, 1, 0.05);
     bar:SetPoint("BOTTOMLEFT");
