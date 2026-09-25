@@ -41,6 +41,8 @@ git config core.hooksPath .githooks
 
 For a bigger release, edit the TOC by hand (for example to `v1.1.0`); the next commit becomes `v1.1.1`. Use `git commit --no-verify` to commit without a bump.
 
+[CHANGELOG.md](CHANGELOG.md) lists every version. A post-commit hook adds each commit's subject under its version and amends the changelog into that commit, so write subjects that read well there. Rebases, cherry-picks and merges are left out.
+
 ## Credits and license
 
 AtlasLoot Enhanced is by Hegarol, Daviesh and the AtlasLoot team. This fork is released under the same GPL v2 license; see [AtlasLoot/Documentation/LICENSE.txt](AtlasLoot/Documentation/LICENSE.txt).

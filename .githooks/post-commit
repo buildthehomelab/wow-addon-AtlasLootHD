@@ -1,0 +1,45 @@
+#!/bin/sh
+# Adds each commit's subject to CHANGELOG.md under its version (## Version: in
+# the TOC, bumped by the pre-commit hook), then amends the changelog into the
+# commit it describes. Git builds the commit before any hook sees the message,
+# so this can't happen earlier.
+set -e
+
+toc="AtlasLoot/AtlasLoot.toc"
+changelog="CHANGELOG.md"
+
+# The amend below runs this hook again
+[ -n "$CHANGELOG_AMENDING" ] && exit 0
+
+# Rebases, cherry-picks and merges replay or join commits that already have entries
+gitdir=$(git rev-parse --git-dir)
+if [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] || [ -f "$gitdir/CHERRY_PICK_HEAD" ] ||
+        git rev-parse -q --verify HEAD^2 >/dev/null; then
+    exit 0
+fi
+
+CL_VERSION=$(git show HEAD:"$toc" | perl -ne 'print $1 if /^## Version: (\S+)/')
+CL_DATE=$(git log -1 --date=short --format=%cd)
+CL_SUBJECT=$(git log -1 --format=%s)
+export CL_VERSION CL_DATE CL_SUBJECT
+[ -n "$CL_VERSION" ] || exit 0
+
+[ -f "$changelog" ] || printf '# Changelog\n' > "$changelog"
+# Newest version first. A commit made with --no-verify keeps the previous
+# version, so its subject joins that version's section.
+perl -0pi -e '
+    my ($v, $d, $s) = @ENV{qw(CL_VERSION CL_DATE CL_SUBJECT)};
+    if (/^## \Q$v\E(?: [^\n]*)?\n((?:- [^\n]*\n)*)/m) {
+        my $bullets = $1;
+        s/^(## \Q$v\E(?: [^\n]*)?\n)/$1- $s\n/m unless $bullets =~ /^- \Q$s\E$/m;
+    } elsif (/^## /m) {
+        s/^(?=## )/## $v - $d\n- $s\n\n/m;
+    } else {
+        $_ .= "\n## $v - $d\n- $s\n";
+    }
+' "$changelog"
+
+if ! git diff --quiet -- "$changelog" || ! git ls-files --error-unmatch "$changelog" >/dev/null 2>&1; then
+    git add "$changelog"
+    CHANGELOG_AMENDING=1 git commit --amend --no-edit --no-verify -q
+fi
