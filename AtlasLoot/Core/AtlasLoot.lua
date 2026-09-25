@@ -40,7 +40,8 @@ local VERSION_MINOR = "11";
 local VERSION_BOSSES = "04";
 --The displayed version is the AtlasLootHD one from the TOC, bumped on every commit.
 --VERSION_MAJOR/MINOR/BOSSES stay the upstream version for saved variable migrations.
-ATLASLOOT_VERSION_NUMBER = GetAddOnMetadata("AtlasLoot", "Version") or "?";
+--The client caches the TOC until it restarts, so an older "v5.11.04" can still show up here
+ATLASLOOT_VERSION_NUMBER = gsub(GetAddOnMetadata("AtlasLoot", "Version") or "?", "^v", "");
 ATLASLOOT_VERSION_TEXT = "AtlasLootHD v"..ATLASLOOT_VERSION_NUMBER;
 ATLASLOOT_VERSION = "|cffFF8400"..ATLASLOOT_VERSION_TEXT.."|r";
 --Now allows for multiple compatible Atlas versions.  Always put the newest first
